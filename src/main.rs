@@ -2,7 +2,7 @@
 
 mod backup;
 
-const APP_VERSION: &str = "1.1.2";
+const APP_VERSION: &str = "1.2.0";
 use eframe::egui;
 use egui::{Color32, RichText};
 use std::collections::BTreeMap;
@@ -85,12 +85,18 @@ struct FlossKeeperApp {
     missing_status: String,
     pattern_input: String,
     pattern_status: String,
+    show_about_window: bool,
+    show_first_run_help: bool,
+    hide_first_run_help: bool,
+    first_run_help_path: PathBuf,
 }
 
 impl Default for FlossKeeperApp {
     fn default() -> Self {
         let colors = load_dmc_colors();
         let save_path = default_save_path();
+        let first_run_help_path = default_first_run_help_path();
+        let first_run_help_dismissed = first_run_help_path.exists();
         let mut app = Self {
             colors,
             inventory: BTreeMap::new(),
@@ -105,6 +111,10 @@ impl Default for FlossKeeperApp {
             missing_status: String::new(),
             pattern_input: String::new(),
             pattern_status: String::new(),
+            show_about_window: false,
+            show_first_run_help: !first_run_help_dismissed,
+            hide_first_run_help: false,
+            first_run_help_path,
         };
 
         match app.load_collection() {
@@ -112,7 +122,8 @@ impl Default for FlossKeeperApp {
                 if loaded {
                     app.status = "Loaded saved collection.".to_string();
                 } else {
-                    app.status = "No saved collection yet. Add bobbins/skeins, then click Save.".to_string();
+                    app.status =
+                        "No saved collection yet. Add bobbins/skeins, then click Save.".to_string();
                 }
             }
             Err(err) => {
@@ -125,6 +136,85 @@ impl Default for FlossKeeperApp {
 }
 
 impl FlossKeeperApp {
+    fn show_about_window(&mut self, ctx: &egui::Context) {
+        let mut open = self.show_about_window;
+
+        egui::Window::new("About FlossKeeper")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.heading(format!("FlossKeeper v{}", APP_VERSION));
+                ui.label("A simple desktop floss stash tracker for cross-stitchers.");
+                ui.add_space(8.0);
+
+                ui.label("What it does:");
+                ui.label("• Tracks DMC floss colors");
+                ui.label("• Tracks bobbins and skeins separately");
+                ui.label("• Helps find missing colors");
+                ui.label("• Plans pattern shopping lists against your stash");
+                ui.label("• Supports backup, restore, and TSV export");
+
+                ui.add_space(8.0);
+                ui.label("Your collection is stored locally on this computer.");
+                ui.label("No account, cloud sync, or internet connection is required.");
+
+                ui.add_space(10.0);
+                if ui.button("Close").clicked() {
+                    self.show_about_window = false;
+                }
+            });
+
+        self.show_about_window = open && self.show_about_window;
+    }
+
+    fn show_first_run_help_window(&mut self, ctx: &egui::Context) {
+        if !self.show_first_run_help {
+            return;
+        }
+
+        let mut open = self.show_first_run_help;
+        let mut close_clicked = false;
+
+        egui::Window::new("Welcome to FlossKeeper")
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .default_width(460.0)
+            .show(ctx, |ui| {
+                ui.heading(format!("Welcome to FlossKeeper v{}", APP_VERSION));
+                ui.label("FlossKeeper helps you keep track of your cross-stitch floss stash.");
+                ui.add_space(8.0);
+
+                ui.label("Quick start:");
+                ui.label("• Use Collection to add bobbins and skeins you own.");
+                ui.label("• Use Missing Colors to see what DMC colors you still need.");
+                ui.label("• Use Pattern Planner to paste a pattern color list and compare it against your stash.");
+                ui.label("• Use Backup / Restore before making big changes or moving computers.");
+
+                ui.add_space(8.0);
+                ui.checkbox(&mut self.hide_first_run_help, "Don't show this again");
+
+                ui.add_space(10.0);
+                if ui.button("Got it").clicked() {
+                    close_clicked = true;
+                }
+            });
+
+        if close_clicked {
+            open = false;
+        }
+
+        if !open && self.hide_first_run_help {
+            if let Some(parent) = self.first_run_help_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&self.first_run_help_path, "dismissed\n");
+        }
+
+        self.show_first_run_help = open;
+    }
+
     fn selected_color(&self) -> Option<&DmcColor> {
         self.selected_code
             .as_ref()
@@ -143,7 +233,12 @@ impl FlossKeeperApp {
 
     fn cleanup_entry_if_empty(&mut self, code: &str) {
         let key = canonical_code(code);
-        if self.inventory.get(&key).map(|entry| entry.is_empty()).unwrap_or(false) {
+        if self
+            .inventory
+            .get(&key)
+            .map(|entry| entry.is_empty())
+            .unwrap_or(false)
+        {
             self.inventory.remove(&key);
         }
     }
@@ -245,7 +340,11 @@ impl FlossKeeperApp {
             if let Some(entry) = self.inventory.get(&color.code) {
                 if !entry.is_empty() {
                     let notes = entry.notes.replace('\t', " ").replace('\n', " ");
-                    writeln!(file, "{}\t{}\t{}\t{}", color.code, entry.bobbins, entry.skeins, notes)?;
+                    writeln!(
+                        file,
+                        "{}\t{}\t{}\t{}",
+                        color.code, entry.bobbins, entry.skeins, notes
+                    )?;
                 }
             }
         }
@@ -271,8 +370,18 @@ impl FlossKeeperApp {
 
             let mut parts = line.splitn(4, '\t');
             let code = parts.next().unwrap_or("").trim();
-            let bobbins = parts.next().unwrap_or("0").trim().parse::<u32>().unwrap_or(0);
-            let skeins = parts.next().unwrap_or("0").trim().parse::<u32>().unwrap_or(0);
+            let bobbins = parts
+                .next()
+                .unwrap_or("0")
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(0);
+            let skeins = parts
+                .next()
+                .unwrap_or("0")
+                .trim()
+                .parse::<u32>()
+                .unwrap_or(0);
             let notes = parts.next().unwrap_or("").trim().to_string();
 
             if code.is_empty() {
@@ -351,7 +460,10 @@ impl FlossKeeperApp {
         writeln!(file)?;
         writeln!(file, "Total missing colours: {count}")?;
 
-        self.status = format!("Exported shopping list with {count} colours to {}", path.display());
+        self.status = format!(
+            "Exported shopping list with {count} colours to {}",
+            path.display()
+        );
         Ok(())
     }
 
@@ -471,7 +583,11 @@ impl FlossKeeperApp {
             ui.radio_value(&mut self.filter_mode, FilterMode::All, "All");
             ui.radio_value(&mut self.filter_mode, FilterMode::Owned, "Owned");
             ui.radio_value(&mut self.filter_mode, FilterMode::Missing, "Missing");
-            ui.radio_value(&mut self.filter_mode, FilterMode::BobbinsOnly, "Bobbins only");
+            ui.radio_value(
+                &mut self.filter_mode,
+                FilterMode::BobbinsOnly,
+                "Bobbins only",
+            );
             ui.radio_value(&mut self.filter_mode, FilterMode::SkeinsOnly, "Skeins only");
             ui.radio_value(&mut self.filter_mode, FilterMode::LowStock, "Low stock");
             ui.radio_value(&mut self.filter_mode, FilterMode::WithNotes, "With notes");
@@ -518,7 +634,9 @@ impl FlossKeeperApp {
             self.colors.len(),
             self.filter_mode.label()
         ));
-        ui.label("Scroll the colour list with the mouse wheel/touchpad, or drag inside the list area.");
+        ui.label(
+            "Scroll the colour list with the mouse wheel/touchpad, or drag inside the list area.",
+        );
         ui.separator();
 
         let mut action: Option<(String, &'static str, i32)> = None;
@@ -529,62 +647,62 @@ impl FlossKeeperApp {
             .auto_shrink([false, false])
             .max_height(ui.available_height())
             .show(ui, |ui| {
-            egui::Grid::new("floss_grid")
-                .striped(true)
-                .spacing([8.0, 4.0])
-                .show(ui, |ui| {
-                    ui.strong("Color");
-                    ui.strong("DMC");
-                    ui.strong("Name");
-                    ui.strong("Bobbins");
-                    ui.strong("Skeins");
-                    ui.strong("Total");
-                    ui.strong("Notes");
-                    ui.end_row();
-
-                    for color in visible {
-                        let entry = self.entry_for(&color.code);
-
-                        color_swatch(ui, color.rgb, [28.0, 18.0]);
-
-                        if ui
-                            .selectable_label(
-                                self.selected_code.as_deref() == Some(color.code.as_str()),
-                                &color.code,
-                            )
-                            .clicked()
-                        {
-                            select_code = Some(color.code.clone());
-                        }
-
-                        ui.label(&color.name);
-
-                        ui.horizontal(|ui| {
-                            if ui.small_button("-").clicked() {
-                                action = Some((color.code.clone(), "bobbins", -1));
-                            }
-                            ui.label(entry.bobbins.to_string());
-                            if ui.small_button("+").clicked() {
-                                action = Some((color.code.clone(), "bobbins", 1));
-                            }
-                        });
-
-                        ui.horizontal(|ui| {
-                            if ui.small_button("-").clicked() {
-                                action = Some((color.code.clone(), "skeins", -1));
-                            }
-                            ui.label(entry.skeins.to_string());
-                            if ui.small_button("+").clicked() {
-                                action = Some((color.code.clone(), "skeins", 1));
-                            }
-                        });
-
-                        ui.label(entry.total_units().to_string());
-                        ui.label(short_note(&entry.notes));
+                egui::Grid::new("floss_grid")
+                    .striped(true)
+                    .spacing([8.0, 4.0])
+                    .show(ui, |ui| {
+                        ui.strong("Color");
+                        ui.strong("DMC");
+                        ui.strong("Name");
+                        ui.strong("Bobbins");
+                        ui.strong("Skeins");
+                        ui.strong("Total");
+                        ui.strong("Notes");
                         ui.end_row();
-                    }
-                });
-        });
+
+                        for color in visible {
+                            let entry = self.entry_for(&color.code);
+
+                            color_swatch(ui, color.rgb, [28.0, 18.0]);
+
+                            if ui
+                                .selectable_label(
+                                    self.selected_code.as_deref() == Some(color.code.as_str()),
+                                    &color.code,
+                                )
+                                .clicked()
+                            {
+                                select_code = Some(color.code.clone());
+                            }
+
+                            ui.label(&color.name);
+
+                            ui.horizontal(|ui| {
+                                if ui.small_button("-").clicked() {
+                                    action = Some((color.code.clone(), "bobbins", -1));
+                                }
+                                ui.label(entry.bobbins.to_string());
+                                if ui.small_button("+").clicked() {
+                                    action = Some((color.code.clone(), "bobbins", 1));
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                if ui.small_button("-").clicked() {
+                                    action = Some((color.code.clone(), "skeins", -1));
+                                }
+                                ui.label(entry.skeins.to_string());
+                                if ui.small_button("+").clicked() {
+                                    action = Some((color.code.clone(), "skeins", 1));
+                                }
+                            });
+
+                            ui.label(entry.total_units().to_string());
+                            ui.label(short_note(&entry.notes));
+                            ui.end_row();
+                        }
+                    });
+            });
 
         if let Some(code) = select_code {
             self.selected_code = Some(code);
@@ -657,7 +775,6 @@ impl FlossKeeperApp {
     }
 }
 
-
 impl FlossKeeperApp {
     fn ui_backup_restore(&mut self, ui: &mut egui::Ui) {
         ui.heading("Backup / Restore");
@@ -694,7 +811,6 @@ impl FlossKeeperApp {
         }
     }
 }
-
 
 impl FlossKeeperApp {
     fn ui_missing_colors(&mut self, ui: &mut egui::Ui) {
@@ -785,7 +901,6 @@ impl FlossKeeperApp {
     }
 }
 
-
 impl FlossKeeperApp {
     fn missing_colors_owned_count(&self) -> usize {
         self.colors
@@ -854,7 +969,6 @@ impl FlossKeeperApp {
     }
 }
 
-
 impl FlossKeeperApp {
     fn ui_about(&mut self, ui: &mut egui::Ui) {
         ui.heading(format!("FlossKeeper v{}", APP_VERSION));
@@ -891,7 +1005,6 @@ impl FlossKeeperApp {
         ui.label("FlossKeeper saves your stash locally on this computer.");
     }
 }
-
 
 impl FlossKeeperApp {
     fn find_color_by_code(&self, raw_code: &str) -> Option<&DmcColor> {
@@ -1143,11 +1256,7 @@ impl FlossKeeperApp {
                         for code in &required_codes {
                             if let Some(color) = self.find_color_by_code(code) {
                                 let entry = self.entry_for(&color.code);
-                                let status = if is_owned(&entry) {
-                                    "OWNED"
-                                } else {
-                                    "MISSING"
-                                };
+                                let status = if is_owned(&entry) { "OWNED" } else { "MISSING" };
 
                                 ui.label(status);
                                 ui.label(&color.code);
@@ -1165,9 +1274,23 @@ impl FlossKeeperApp {
 
 impl eframe::App for FlossKeeperApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.show_first_run_help_window(ctx);
+        self.show_about_window(ctx);
+
         ctx.set_visuals(egui::Visuals::light());
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                if ui.button("Help").clicked() {
+                    self.show_first_run_help = true;
+                }
+
+                if ui.button(format!("About v{}", APP_VERSION)).clicked() {
+                    self.show_about_window = true;
+                }
+            });
+            ui.separator();
+
             self.ui_top(ui);
 
             ui.separator();
@@ -1274,7 +1397,8 @@ fn color_swatch(ui: &mut egui::Ui, rgb: [u8; 3], size: [f32; 2]) {
     let (rect, _) = ui.allocate_exact_size(egui::vec2(size[0], size[1]), egui::Sense::hover());
     let color = Color32::from_rgb(rgb[0], rgb[1], rgb[2]);
     ui.painter().rect_filled(rect, 3.0, color);
-    ui.painter().rect_stroke(rect, 3.0, egui::Stroke::new(1.0, Color32::BLACK));
+    ui.painter()
+        .rect_stroke(rect, 3.0, egui::Stroke::new(1.0, Color32::BLACK));
 }
 
 fn load_dmc_colors() -> Vec<DmcColor> {
@@ -1329,7 +1453,12 @@ fn parse_dmc_line(line: &str) -> Option<DmcColor> {
     let hex = line[last + 1..].trim().trim_matches('"').to_string();
     let rgb = parse_hex_rgb(&hex)?;
 
-    Some(DmcColor { code, name, hex, rgb })
+    Some(DmcColor {
+        code,
+        name,
+        hex,
+        rgb,
+    })
 }
 
 fn parse_hex_rgb(hex: &str) -> Option<[u8; 3]> {
@@ -1377,7 +1506,6 @@ fn default_save_path() -> PathBuf {
     PathBuf::from("flosskeeper_collection.tsv")
 }
 
-
 fn load_app_icon() -> std::sync::Arc<egui::IconData> {
     let icon_bytes = include_bytes!("../assets/icons/flosskeeper.png");
 
@@ -1386,9 +1514,15 @@ fn load_app_icon() -> std::sync::Arc<egui::IconData> {
         .into()
 }
 
+fn default_first_run_help_path() -> PathBuf {
+    let mut path = default_save_path();
+    path.set_file_name("first_run_help_dismissed.txt");
+    path
+}
+
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
-	renderer: eframe::Renderer::Glow,
+        renderer: eframe::Renderer::Glow,
         viewport: egui::ViewportBuilder::default()
             .with_app_id("com.jesterace.FlossKeeper")
             .with_title("FlossKeeper")
@@ -1398,7 +1532,7 @@ fn main() -> eframe::Result<()> {
     };
 
     eframe::run_native(
-        "FlossKeeper",
+        &format!("FlossKeeper v{}", APP_VERSION),
         options,
         Box::new(|_cc| Box::<FlossKeeperApp>::default()),
     )

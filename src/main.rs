@@ -2,7 +2,7 @@
 
 mod backup;
 
-const APP_VERSION: &str = "1.3.0";
+const APP_VERSION: &str = "1.4.0";
 use eframe::egui;
 use egui::{Color32, RichText};
 use std::collections::BTreeMap;
@@ -68,6 +68,7 @@ enum AppTab {
     BackupRestore,
     MissingColors,
     PatternPlanner,
+    Storage,
     About,
 }
 
@@ -113,12 +114,15 @@ struct FlossKeeperApp {
     first_run_help_path: PathBuf,
     theme_mode: ThemeMode,
     theme_path: PathBuf,
+    stash_path_config_path: PathBuf,
 }
 
 impl Default for FlossKeeperApp {
     fn default() -> Self {
         let colors = load_dmc_colors();
-        let save_path = default_save_path();
+        let stash_path_config_path = default_stash_path_config_path();
+        let save_path =
+            configured_save_path(&stash_path_config_path).unwrap_or_else(default_save_path);
         let first_run_help_path = default_first_run_help_path();
         let first_run_help_dismissed = first_run_help_path.exists();
         let theme_path = default_theme_path();
@@ -143,6 +147,7 @@ impl Default for FlossKeeperApp {
             first_run_help_path,
             theme_mode,
             theme_path,
+            stash_path_config_path,
         };
 
         match app.load_collection() {
@@ -202,6 +207,190 @@ impl FlossKeeperApp {
         };
 
         let _ = fs::write(&self.theme_path, value);
+    }
+
+    fn save_stash_path_config(&self) -> io::Result<()> {
+        if let Some(parent) = self.stash_path_config_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        fs::write(
+            &self.stash_path_config_path,
+            format!("{}\n", self.save_path.display()),
+        )
+    }
+
+    fn clear_stash_path_config(&self) {
+        let _ = fs::remove_file(&self.stash_path_config_path);
+    }
+
+    fn choose_stash_file_location(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .set_title("Choose FlossKeeper stash file")
+            .set_file_name("flosskeeper_collection.tsv")
+            .add_filter("FlossKeeper stash", &["tsv"])
+            .save_file()
+        else {
+            self.status = "Stash location change cancelled.".to_string();
+            return;
+        };
+
+        if let Some(parent) = path.parent() {
+            if let Err(err) = fs::create_dir_all(parent) {
+                self.status = format!("Could not create stash folder: {err}");
+                return;
+            }
+        }
+
+        let old_path = self.save_path.clone();
+
+        if path.exists() {
+            self.save_path = path.clone();
+
+            match self.load_collection() {
+                Ok(true) => {
+                    if let Err(err) = self.save_stash_path_config() {
+                        self.status = format!(
+                            "Loaded selected stash, but could not save storage setting: {err}"
+                        );
+                    } else {
+                        self.status = format!("Now using stash file: {}", self.save_path.display());
+                    }
+                }
+                Ok(false) => {
+                    self.save_path = old_path;
+                    self.status = "Selected stash file could not be found.".to_string();
+                }
+                Err(err) => {
+                    self.save_path = old_path;
+                    self.status = format!("Could not load selected stash file: {err}");
+                }
+            }
+        } else {
+            self.save_path = path.clone();
+
+            match self.save_collection() {
+                Ok(()) => {
+                    if let Err(err) = self.save_stash_path_config() {
+                        self.status = format!(
+                            "Created selected stash, but could not save storage setting: {err}"
+                        );
+                    } else {
+                        self.status = format!(
+                            "Created and switched to stash file: {}",
+                            self.save_path.display()
+                        );
+                    }
+                }
+                Err(err) => {
+                    self.save_path = old_path;
+                    self.status = format!("Could not create selected stash file: {err}");
+                }
+            }
+        }
+    }
+
+    fn reset_stash_location(&mut self) {
+        self.clear_stash_path_config();
+        self.save_path = default_save_path();
+
+        match self.load_collection() {
+            Ok(true) => {
+                self.status = format!("Reset to default stash file: {}", self.save_path.display())
+            }
+            Ok(false) => {
+                self.status = format!(
+                    "Reset to default stash file. No stash file exists yet: {}",
+                    self.save_path.display()
+                )
+            }
+            Err(err) => {
+                self.status = format!("Reset path, but could not load default stash: {err}")
+            }
+        }
+    }
+
+    fn sync_conflict_files(&self) -> Vec<PathBuf> {
+        let Some(dir) = self.save_path.parent() else {
+            return Vec::new();
+        };
+
+        let Ok(entries) = fs::read_dir(dir) else {
+            return Vec::new();
+        };
+
+        entries
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                    return false;
+                };
+
+                let lowered = name.to_lowercase();
+
+                lowered.contains("sync-conflict")
+                    || lowered.contains("conflicted copy")
+                    || lowered.contains("conflict")
+            })
+            .collect()
+    }
+
+    fn ui_storage_settings(&mut self, ui: &mut egui::Ui) {
+        ui.heading("Storage / Sync");
+        ui.label("Choose where FlossKeeper stores your stash file.");
+        ui.label("Use this with Syncthing, Google Drive tools, SMB, Dropbox, or any synced local folder.");
+        ui.add_space(10.0);
+
+        ui.label("Current stash file:");
+        ui.monospace(self.save_path.display().to_string());
+
+        ui.add_space(10.0);
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Choose stash file location").clicked() {
+                self.choose_stash_file_location();
+            }
+
+            if ui.button("Reset to default location").clicked() {
+                self.reset_stash_location();
+            }
+
+            if ui.button("Save now").clicked() {
+                if let Err(err) = self.save_collection() {
+                    self.status = format!("Save failed: {err}");
+                }
+            }
+
+            if ui.button("Reload from stash file").clicked() {
+                match self.load_collection() {
+                    Ok(true) => self.status = "Reloaded stash file.".to_string(),
+                    Ok(false) => self.status = "No stash file found at this location.".to_string(),
+                    Err(err) => self.status = format!("Reload failed: {err}"),
+                }
+            }
+        });
+
+        ui.add_space(10.0);
+        ui.separator();
+        ui.add_space(10.0);
+
+        ui.heading("Sync safety");
+        ui.label("Best habit: open FlossKeeper on one computer at a time, save, close it, then let Syncthing finish syncing.");
+
+        let conflicts = self.sync_conflict_files();
+
+        if conflicts.is_empty() {
+            ui.label("No obvious sync conflict files found beside your stash file.");
+        } else {
+            ui.label(egui::RichText::new("Possible sync conflict files found:").strong());
+            for path in conflicts {
+                ui.monospace(path.display().to_string());
+            }
+        }
+
+        ui.add_space(10.0);
+        ui.label(&self.status);
     }
 
     fn show_about_window(&mut self, ctx: &egui::Context) {
@@ -1398,6 +1587,8 @@ impl eframe::App for FlossKeeperApp {
                     "Pattern Planner",
                 );
 
+                ui.selectable_value(&mut self.active_tab, AppTab::Storage, "Storage / Sync");
+
                 ui.selectable_value(
                     &mut self.active_tab,
                     AppTab::BackupRestore,
@@ -1419,6 +1610,11 @@ impl eframe::App for FlossKeeperApp {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     self.ui_filters(ui);
                     self.ui_color_list(ui);
+                });
+            }
+            AppTab::Storage => {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    self.ui_storage_settings(ui);
                 });
             }
             AppTab::BackupRestore => {
@@ -1588,6 +1784,23 @@ fn default_save_path() -> PathBuf {
     }
 
     PathBuf::from("flosskeeper_collection.tsv")
+}
+
+fn default_stash_path_config_path() -> PathBuf {
+    let mut path = default_save_path();
+    path.set_file_name("stash_path.txt");
+    path
+}
+
+fn configured_save_path(config_path: &PathBuf) -> Option<PathBuf> {
+    let raw = fs::read_to_string(config_path).ok()?;
+    let trimmed = raw.trim();
+
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
 }
 
 fn load_app_icon() -> std::sync::Arc<egui::IconData> {

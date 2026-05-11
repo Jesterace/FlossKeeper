@@ -4,7 +4,7 @@ use serde_json::{json, Map, Value};
 use std::fs;
 use std::path::PathBuf;
 
-pub fn collection_file() -> Result<PathBuf, String> {
+fn default_collection_file() -> Result<PathBuf, String> {
     let mut dir =
         dirs::config_dir().ok_or_else(|| "Could not find your config directory.".to_string())?;
 
@@ -16,6 +16,26 @@ pub fn collection_file() -> Result<PathBuf, String> {
     dir.push("flosskeeper_collection.tsv");
 
     Ok(dir)
+}
+
+fn stash_path_config_file() -> Result<PathBuf, String> {
+    let mut path = default_collection_file()?;
+    path.set_file_name("stash_path.txt");
+    Ok(path)
+}
+
+pub fn collection_file() -> Result<PathBuf, String> {
+    let config_path = stash_path_config_file()?;
+
+    if let Ok(raw) = fs::read_to_string(&config_path) {
+        let trimmed = raw.trim();
+
+        if !trimmed.is_empty() {
+            return Ok(PathBuf::from(trimmed));
+        }
+    }
+
+    default_collection_file()
 }
 
 fn parse_tsv_rows(raw: &str) -> Vec<Value> {

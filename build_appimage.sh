@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP="FlossKeeper"
 BIN="flosskeeper"
-VERSION="1.2.0"
+VERSION="1.3.0"
 ARCH="x86_64"
 
 PROJECT="/home/jared/Projects/FlossKeeper_Rust_v0_7"
@@ -62,6 +62,29 @@ SVG
 
 cp "$APPDIR/flosskeeper.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/flosskeeper.svg"
 ln -sf flosskeeper.svg "$APPDIR/.DirIcon"
+
+echo "== Using polished app icon =="
+if [ -f "$PROJECT/assets/icons/flosskeeper-256.png" ]; then
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/16x16/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/32x32/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/48x48/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/64x64/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/128x128/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+    mkdir -p "$APPDIR/usr/share/icons/hicolor/512x512/apps"
+
+    cp "$PROJECT/assets/icons/flosskeeper-16.png" "$APPDIR/usr/share/icons/hicolor/16x16/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-32.png" "$APPDIR/usr/share/icons/hicolor/32x32/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-48.png" "$APPDIR/usr/share/icons/hicolor/48x48/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-64.png" "$APPDIR/usr/share/icons/hicolor/64x64/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-128.png" "$APPDIR/usr/share/icons/hicolor/128x128/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-256.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/flosskeeper.png"
+    cp "$PROJECT/assets/icons/flosskeeper-512.png" "$APPDIR/usr/share/icons/hicolor/512x512/apps/flosskeeper.png"
+
+    cp "$PROJECT/assets/icons/flosskeeper-256.png" "$APPDIR/flosskeeper.png"
+    ln -sf flosskeeper.png "$APPDIR/.DirIcon"
+fi
+
 
 echo "== Getting appimagetool if needed =="
 if ! command -v appimagetool >/dev/null 2>&1; then

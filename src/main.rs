@@ -1591,7 +1591,7 @@ fn default_save_path() -> PathBuf {
 }
 
 fn load_app_icon() -> std::sync::Arc<egui::IconData> {
-    let icon_bytes = include_bytes!("../assets/icons/flosskeeper.png");
+    let icon_bytes = include_bytes!("../assets/flosskeeper-icon.png");
 
     eframe::icon_data::from_png_bytes(icon_bytes)
         .expect("Failed to load FlossKeeper window icon")

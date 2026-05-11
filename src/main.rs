@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 mod backup;
 
 const APP_VERSION: &str = "1.1.2";
@@ -1386,6 +1388,7 @@ fn load_app_icon() -> std::sync::Arc<egui::IconData> {
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
+	renderer: eframe::Renderer::Glow,
         viewport: egui::ViewportBuilder::default()
             .with_app_id("com.jesterace.FlossKeeper")
             .with_title("FlossKeeper")

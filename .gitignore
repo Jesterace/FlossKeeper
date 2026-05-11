@@ -44,3 +44,13 @@ windows-11.sh
 # Temporary transfer/build helpers
 build_windows.sh
 build_windows_transfer.sh
+
+# Local VM / Quickemu files
+OVMF_VARS.fd
+disk.qcow2
+windows-11/
+windows-11.sh
+
+# Temporary transfer/build helpers
+build_windows.sh
+build_windows_transfer.sh

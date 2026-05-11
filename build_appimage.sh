@@ -1,103 +1,92 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-APP_NAME="FlossKeeper"
-APP_ID="com.jesterace.FlossKeeper"
-BIN_NAME="flosskeeper"
-VERSION="1.1.2"
-ARCH="$(uname -m)"
+APP="FlossKeeper"
+BIN="flosskeeper"
+VERSION="1.1.3"
+ARCH="x86_64"
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APPDIR="$PROJECT_DIR/${APP_NAME}.AppDir"
-DIST_DIR="$PROJECT_DIR/dist"
-APPIMAGETOOL="$PROJECT_DIR/appimagetool-x86_64.AppImage"
+PROJECT="/home/jared/Projects/FlossKeeper_Rust_v0_7"
+APPDIR="$PROJECT/FlossKeeper.AppDir"
+DIST="$PROJECT/dist/linux"
+APPIMAGE="$DIST/FlossKeeper-v${VERSION}-${ARCH}.AppImage"
 
-ICON_SRC="$PROJECT_DIR/assets/icons/flosskeeper.png"
+cd "$PROJECT"
 
-if [ "$ARCH" != "x86_64" ]; then
-    echo "This script currently expects x86_64."
-    echo "Detected: $ARCH"
-    exit 1
-fi
-
-echo "Building release binary..."
+echo "== Building Linux release binary =="
 cargo build --release
 
-echo "Preparing AppDir..."
+echo "== Creating AppDir =="
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/share/applications"
-mkdir -p "$APPDIR/usr/share/icons/hicolor/256x256/apps"
-mkdir -p "$DIST_DIR"
+mkdir -p "$APPDIR/usr/share/icons/hicolor/scalable/apps"
+mkdir -p "$DIST"
 
-cp "$PROJECT_DIR/target/release/$BIN_NAME" "$APPDIR/usr/bin/$BIN_NAME"
+cp "target/release/$BIN" "$APPDIR/usr/bin/$BIN"
+chmod +x "$APPDIR/usr/bin/$BIN"
 
-if [ ! -f "$ICON_SRC" ]; then
-    echo "Project icon not found at:"
-    echo "  $ICON_SRC"
-    echo
-    echo "Trying local installed icon..."
-    if [ -f "$HOME/.local/share/icons/hicolor/256x256/apps/flosskeeper.png" ]; then
-        mkdir -p "$PROJECT_DIR/assets/icons"
-        cp "$HOME/.local/share/icons/hicolor/256x256/apps/flosskeeper.png" "$ICON_SRC"
-    else
-        echo "No icon found. Put flosskeeper.png in assets/icons/ first."
-        exit 1
-    fi
-fi
+echo "== Creating AppRun =="
+cat > "$APPDIR/AppRun" <<'APPRUN'
+#!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/flosskeeper" "$@"
+APPRUN
+chmod +x "$APPDIR/AppRun"
 
-cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/flosskeeper.png"
-
-cat > "$APPDIR/usr/share/applications/$APP_ID.desktop" <<EOF
+echo "== Creating desktop file =="
+cat > "$APPDIR/flosskeeper.desktop" <<'DESKTOP'
 [Desktop Entry]
 Name=FlossKeeper
-Comment=Cross-stitch floss stash tracker
+Comment=Track your cross-stitch floss stash
 Exec=flosskeeper
 Icon=flosskeeper
 Terminal=false
 Type=Application
-Categories=Utility;Graphics;
-StartupNotify=true
-StartupWMClass=$APP_ID
-EOF
+Categories=Utility;
+DESKTOP
 
-# appimagetool expects these at the AppDir root too.
-cp "$APPDIR/usr/share/applications/$APP_ID.desktop" "$APPDIR/$APP_ID.desktop"
-cp "$ICON_SRC" "$APPDIR/flosskeeper.png"
-cp "$ICON_SRC" "$APPDIR/.DirIcon"
+cp "$APPDIR/flosskeeper.desktop" "$APPDIR/usr/share/applications/flosskeeper.desktop"
 
-cat > "$APPDIR/AppRun" <<'EOF'
-#!/usr/bin/env bash
-HERE="$(dirname "$(readlink -f "$0")")"
-exec "$HERE/usr/bin/flosskeeper" "$@"
-EOF
+echo "== Creating simple SVG icon =="
+cat > "$APPDIR/flosskeeper.svg" <<'SVG'
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect width="256" height="256" rx="48" fill="#2f4050"/>
+  <rect x="54" y="56" width="148" height="144" rx="18" fill="#f5f7fa"/>
+  <path d="M76 96h104M76 128h104M76 160h104" stroke="#2f4050" stroke-width="12" stroke-linecap="round"/>
+  <circle cx="88" cy="96" r="8" fill="#4aa3df"/>
+  <circle cx="88" cy="128" r="8" fill="#7ac943"/>
+  <circle cx="88" cy="160" r="8" fill="#f15a5a"/>
+</svg>
+SVG
 
-chmod +x "$APPDIR/AppRun"
-chmod +x "$APPDIR/usr/bin/$BIN_NAME"
+cp "$APPDIR/flosskeeper.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/flosskeeper.svg"
+ln -sf flosskeeper.svg "$APPDIR/.DirIcon"
 
-if command -v strip >/dev/null 2>&1; then
-    strip "$APPDIR/usr/bin/$BIN_NAME" || true
+echo "== Getting appimagetool if needed =="
+if ! command -v appimagetool >/dev/null 2>&1; then
+    mkdir -p "$HOME/.local/bin"
+    wget -O "$HOME/.local/bin/appimagetool" \
+      "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    chmod +x "$HOME/.local/bin/appimagetool"
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if [ ! -f "$APPIMAGETOOL" ]; then
-    echo "Downloading appimagetool..."
-    curl -L \
-        -o "$APPIMAGETOOL" \
-        "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-    chmod +x "$APPIMAGETOOL"
-fi
+echo "== Building AppImage =="
+rm -f "$APPIMAGE"
+ARCH="$ARCH" appimagetool "$APPDIR" "$APPIMAGE"
 
-OUT="$DIST_DIR/FlossKeeper-v${VERSION}-x86_64.AppImage"
+chmod +x "$APPIMAGE"
 
-echo "Creating AppImage..."
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGETOOL" "$APPDIR" "$OUT"
+echo
+echo "== Built AppImage =="
+ls -lh "$APPIMAGE"
 
-chmod +x "$OUT"
+echo
+echo "== Test launch =="
+"$APPIMAGE" || true
 
 echo
 echo "Done."
-echo "Created:"
-echo "  $OUT"
-echo
-echo "Run it with:"
-echo "  $OUT"
+echo "AppImage is here:"
+echo "$APPIMAGE"

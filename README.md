@@ -15,6 +15,9 @@ It lets you track which DMC colors you own, whether they are stored as bobbins o
 - Export your collection as TSV
 - Pattern Planner tab for checking pattern requirements against your stash
 - Available for Linux and Windows
+- About screen
+- First-run help
+- Help button
 
 ## Downloads
 

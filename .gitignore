@@ -1,0 +1,25 @@
+# Rust build output
+target/
+
+# Release/AppImage output
+dist/
+*.AppImage
+appimagetool-*.AppImage
+
+# Local stash/user data
+flosskeeper_collection.tsv
+flosskeeper_backup_*.json
+flosskeeper_collection_export_*.tsv
+flosskeeper_missing_colors*.txt
+flosskeeper_missing_colors*.tsv
+flosskeeper_pattern_report*.txt
+
+# Patch backups from development
+*.before_*
+*.backup
+*.bak
+*~
+
+# OS/editor junk
+.DS_Store
+Thumbs.db

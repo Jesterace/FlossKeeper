@@ -1,7 +1,7 @@
 !include "MUI2.nsh"
 
 !define APP_NAME "FlossKeeper"
-!define APP_VERSION "1.3.0"
+!define APP_VERSION "1.4.0"
 !define APP_PUBLISHER "Jesterace"
 !define APP_EXE "FlossKeeper.exe"
 !define INSTALL_DIR "$LOCALAPPDATA\Programs\FlossKeeper"
@@ -33,7 +33,7 @@ Section "FlossKeeper" SEC_APP
     SetShellVarContext current
     SetOutPath "$INSTDIR"
 
-    File /oname=FlossKeeper.exe "../dist/windows/FlossKeeper-v1.3.0-x86_64.exe"
+    File /oname=FlossKeeper.exe "../dist/windows/FlossKeeper-v1.4.0-x86_64.exe"
     File /oname=flosskeeper.ico "flosskeeper.ico"
 
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -42,9 +42,9 @@ Section "FlossKeeper" SEC_APP
     CreateShortCut "$SMPROGRAMS\FlossKeeper\FlossKeeper.lnk" "$INSTDIR\FlossKeeper.exe" "" "$INSTDIR\flosskeeper.ico" 0
     CreateShortCut "$SMPROGRAMS\FlossKeeper\Uninstall FlossKeeper.lnk" "$INSTDIR\Uninstall.exe" "" "$INSTDIR\flosskeeper.ico" 0
 
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "DisplayName" "FlossKeeper 1.3.0"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "DisplayName" "FlossKeeper 1.4.0"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "Publisher" "${APP_PUBLISHER}"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "DisplayVersion" "1.3.0"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "DisplayVersion" "1.4.0"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "UninstallString" "$INSTDIR\Uninstall.exe"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\FlossKeeper" "DisplayIcon" "$INSTDIR\flosskeeper.ico"

@@ -23,3 +23,14 @@ flosskeeper_pattern_report*.txt
 # OS/editor junk
 .DS_Store
 Thumbs.db
+
+# AppImage build directory
+*.AppDir/
+FlossKeeper.AppDir/
+
+# Old/local helper scripts
+flosskeeper_backup_tool.py
+run_flosskeeper.sh
+README_ARCH_COPY_PASTE.txt
+build_linux_release.sh
+build_windows_on_linux.sh

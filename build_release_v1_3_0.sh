@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT="/home/jared/Projects/FlossKeeper_Rust_v0_7"
-VERSION="1.2.0"
+VERSION="1.3.0"
 TARGET_WIN="x86_64-pc-windows-gnu"
 DIST="$PROJECT/dist"
 LINUX_DIST="$DIST/linux"
@@ -35,7 +35,7 @@ cd "$PROJECT"
 
 echo "== Building Linux AppImage =="
 if [ -f ./build_appimage.sh ]; then
-    sed -i 's/VERSION="[^"]*"/VERSION="1.2.0"/' build_appimage.sh
+    sed -i 's/VERSION="[^"]*"/VERSION="1.3.0"/' build_appimage.sh
     ./build_appimage.sh
 else
     echo "ERROR: build_appimage.sh not found."

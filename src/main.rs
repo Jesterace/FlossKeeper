@@ -2,7 +2,7 @@
 
 mod backup;
 
-const APP_VERSION: &str = "1.2.0";
+const APP_VERSION: &str = "1.3.0";
 use eframe::egui;
 use egui::{Color32, RichText};
 use std::collections::BTreeMap;
@@ -71,6 +71,28 @@ enum AppTab {
     About,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThemeMode {
+    Light,
+    Dark,
+}
+
+impl ThemeMode {
+    fn label(self) -> &'static str {
+        match self {
+            ThemeMode::Light => "Light",
+            ThemeMode::Dark => "Dark",
+        }
+    }
+
+    fn toggle(self) -> Self {
+        match self {
+            ThemeMode::Light => ThemeMode::Dark,
+            ThemeMode::Dark => ThemeMode::Light,
+        }
+    }
+}
+
 struct FlossKeeperApp {
     colors: Vec<DmcColor>,
     inventory: BTreeMap<String, InventoryEntry>,
@@ -89,6 +111,8 @@ struct FlossKeeperApp {
     show_first_run_help: bool,
     hide_first_run_help: bool,
     first_run_help_path: PathBuf,
+    theme_mode: ThemeMode,
+    theme_path: PathBuf,
 }
 
 impl Default for FlossKeeperApp {
@@ -97,6 +121,8 @@ impl Default for FlossKeeperApp {
         let save_path = default_save_path();
         let first_run_help_path = default_first_run_help_path();
         let first_run_help_dismissed = first_run_help_path.exists();
+        let theme_path = default_theme_path();
+        let theme_mode = load_theme_mode(&theme_path);
         let mut app = Self {
             colors,
             inventory: BTreeMap::new(),
@@ -115,6 +141,8 @@ impl Default for FlossKeeperApp {
             show_first_run_help: !first_run_help_dismissed,
             hide_first_run_help: false,
             first_run_help_path,
+            theme_mode,
+            theme_path,
         };
 
         match app.load_collection() {
@@ -136,6 +164,46 @@ impl Default for FlossKeeperApp {
 }
 
 impl FlossKeeperApp {
+    fn apply_theme(&self, ctx: &egui::Context) {
+        match self.theme_mode {
+            ThemeMode::Light => {
+                ctx.set_visuals(egui::Visuals::light());
+            }
+            ThemeMode::Dark => {
+                let mut visuals = egui::Visuals::dark();
+                visuals.override_text_color = Some(Color32::WHITE);
+                ctx.set_visuals(visuals);
+            }
+        }
+    }
+
+    fn toggle_theme(&mut self, ctx: &egui::Context) {
+        self.theme_mode = self.theme_mode.toggle();
+        self.apply_theme(ctx);
+        self.save_theme_mode();
+        self.status = format!("Theme changed to {} mode.", self.theme_mode.label());
+    }
+
+    fn set_theme(&mut self, ctx: &egui::Context, theme_mode: ThemeMode) {
+        self.theme_mode = theme_mode;
+        self.apply_theme(ctx);
+        self.save_theme_mode();
+        self.status = format!("Theme changed to {} mode.", self.theme_mode.label());
+    }
+
+    fn save_theme_mode(&self) {
+        if let Some(parent) = self.theme_path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let value = match self.theme_mode {
+            ThemeMode::Light => "light\n",
+            ThemeMode::Dark => "dark\n",
+        };
+
+        let _ = fs::write(&self.theme_path, value);
+    }
+
     fn show_about_window(&mut self, ctx: &egui::Context) {
         let mut open = self.show_about_window;
 
@@ -1274,13 +1342,29 @@ impl FlossKeeperApp {
 
 impl eframe::App for FlossKeeperApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.apply_theme(ctx);
+
         self.show_first_run_help_window(ctx);
         self.show_about_window(ctx);
 
-        ctx.set_visuals(egui::Visuals::light());
-
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
+                ui.label("Theme:");
+
+                if ui
+                    .selectable_label(matches!(self.theme_mode, ThemeMode::Light), "Light")
+                    .clicked()
+                {
+                    self.set_theme(ctx, ThemeMode::Light);
+                }
+
+                if ui
+                    .selectable_label(matches!(self.theme_mode, ThemeMode::Dark), "Dark")
+                    .clicked()
+                {
+                    self.set_theme(ctx, ThemeMode::Dark);
+                }
+
                 if ui.button("Help").clicked() {
                     self.show_first_run_help = true;
                 }
@@ -1518,6 +1602,20 @@ fn default_first_run_help_path() -> PathBuf {
     let mut path = default_save_path();
     path.set_file_name("first_run_help_dismissed.txt");
     path
+}
+
+fn default_theme_path() -> PathBuf {
+    let mut path = default_save_path();
+    path.set_file_name("theme.txt");
+    path
+}
+
+fn load_theme_mode(path: &Path) -> ThemeMode {
+    match fs::read_to_string(path) {
+        Ok(value) if value.trim().eq_ignore_ascii_case("light") => ThemeMode::Light,
+        Ok(value) if value.trim().eq_ignore_ascii_case("dark") => ThemeMode::Dark,
+        _ => ThemeMode::Dark,
+    }
 }
 
 fn main() -> eframe::Result<()> {

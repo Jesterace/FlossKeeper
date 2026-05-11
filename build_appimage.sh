@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP="FlossKeeper"
 BIN="flosskeeper"
-VERSION="1.3.0"
+VERSION="1.4.0"
 ARCH="x86_64"
 
 PROJECT="/home/jared/Projects/FlossKeeper_Rust_v0_7"

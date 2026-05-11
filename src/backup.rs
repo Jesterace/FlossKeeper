@@ -5,8 +5,8 @@ use std::fs;
 use std::path::PathBuf;
 
 pub fn collection_file() -> Result<PathBuf, String> {
-    let mut dir = dirs::config_dir()
-        .ok_or_else(|| "Could not find your config directory.".to_string())?;
+    let mut dir =
+        dirs::config_dir().ok_or_else(|| "Could not find your config directory.".to_string())?;
 
     dir.push("flosskeeper");
 
@@ -93,8 +93,7 @@ pub fn export_json_backup() -> Result<String, String> {
     let pretty = serde_json::to_string_pretty(&backup)
         .map_err(|e| format!("Could not create JSON backup: {e}"))?;
 
-    fs::write(&save_path, pretty)
-        .map_err(|e| format!("Could not write backup file: {e}"))?;
+    fs::write(&save_path, pretty).map_err(|e| format!("Could not write backup file: {e}"))?;
 
     Ok(format!(
         "JSON backup saved:\n{}\n\nRows exported: {}",
@@ -114,11 +113,11 @@ pub fn restore_json_backup() -> Result<String, String> {
         return Ok("Restore cancelled.".to_string());
     };
 
-    let text = fs::read_to_string(&open_path)
-        .map_err(|e| format!("Could not read backup file: {e}"))?;
+    let text =
+        fs::read_to_string(&open_path).map_err(|e| format!("Could not read backup file: {e}"))?;
 
-    let data: Value = serde_json::from_str(&text)
-        .map_err(|e| format!("Backup is not valid JSON: {e}"))?;
+    let data: Value =
+        serde_json::from_str(&text).map_err(|e| format!("Backup is not valid JSON: {e}"))?;
 
     if data.get("app").and_then(|v| v.as_str()) != Some("FlossKeeper") {
         return Err("This does not look like a FlossKeeper backup.".to_string());
@@ -180,12 +179,10 @@ pub fn export_plain_tsv_copy() -> Result<String, String> {
         return Ok("TSV export cancelled.".to_string());
     };
 
-    fs::write(&save_path, raw_tsv)
-        .map_err(|e| format!("Could not write TSV export: {e}"))?;
+    fs::write(&save_path, raw_tsv).map_err(|e| format!("Could not write TSV export: {e}"))?;
 
     Ok(format!("TSV copy saved:\n{}", save_path.display()))
 }
-
 
 pub fn export_text_file(
     title: &str,
@@ -203,8 +200,7 @@ pub fn export_text_file(
         return Ok("Export cancelled.".to_string());
     };
 
-    fs::write(&save_path, contents)
-        .map_err(|e| format!("Could not write export file: {e}"))?;
+    fs::write(&save_path, contents).map_err(|e| format!("Could not write export file: {e}"))?;
 
     Ok(format!("Export saved:\n{}", save_path.display()))
 }

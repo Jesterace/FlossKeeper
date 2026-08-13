@@ -2,41 +2,6 @@ use chrono::Local;
 use rfd::FileDialog;
 use serde_json::{json, Map, Value};
 use std::fs;
-use std::path::PathBuf;
-
-fn default_collection_file() -> Result<PathBuf, String> {
-    let mut dir =
-        dirs::config_dir().ok_or_else(|| "Could not find your config directory.".to_string())?;
-
-    dir.push("flosskeeper");
-
-    fs::create_dir_all(&dir)
-        .map_err(|e| format!("Could not create FlossKeeper config folder: {e}"))?;
-
-    dir.push("flosskeeper_collection.tsv");
-
-    Ok(dir)
-}
-
-fn stash_path_config_file() -> Result<PathBuf, String> {
-    let mut path = default_collection_file()?;
-    path.set_file_name("stash_path.txt");
-    Ok(path)
-}
-
-pub fn collection_file() -> Result<PathBuf, String> {
-    let config_path = stash_path_config_file()?;
-
-    if let Ok(raw) = fs::read_to_string(&config_path) {
-        let trimmed = raw.trim();
-
-        if !trimmed.is_empty() {
-            return Ok(PathBuf::from(trimmed));
-        }
-    }
-
-    default_collection_file()
-}
 
 fn parse_tsv_rows(raw: &str) -> Vec<Value> {
     let mut lines = raw.lines();
@@ -71,9 +36,7 @@ fn parse_tsv_rows(raw: &str) -> Vec<Value> {
     rows
 }
 
-pub fn export_json_backup() -> Result<String, String> {
-    let collection_path = collection_file()?;
-
+pub fn export_json_backup(collection_path: &std::path::Path) -> Result<String, String> {
     if !collection_path.exists() {
         return Err(format!(
             "Collection file not found:\n{}",
@@ -122,9 +85,7 @@ pub fn export_json_backup() -> Result<String, String> {
     ))
 }
 
-pub fn restore_json_backup() -> Result<String, String> {
-    let collection_path = collection_file()?;
-
+pub fn restore_json_backup(collection_path: &std::path::Path) -> Result<String, String> {
     let Some(open_path) = FileDialog::new()
         .set_title("Restore FlossKeeper JSON Backup")
         .add_filter("JSON backup", &["json"])
@@ -172,9 +133,7 @@ pub fn restore_json_backup() -> Result<String, String> {
     ))
 }
 
-pub fn export_plain_tsv_copy() -> Result<String, String> {
-    let collection_path = collection_file()?;
-
+pub fn export_plain_tsv_copy(collection_path: &std::path::Path) -> Result<String, String> {
     if !collection_path.exists() {
         return Err(format!(
             "Collection file not found:\n{}",

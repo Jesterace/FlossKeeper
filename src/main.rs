@@ -18,6 +18,8 @@ struct DmcColor {
     name: String,
     hex: String,
     rgb: [u8; 3],
+    code_lower: String,
+    name_lower: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -479,8 +481,8 @@ impl FlossKeeperApp {
     }
 
     fn entry_for(&self, code: &str) -> InventoryEntry {
-        let key = canonical_code(code);
-        self.inventory.get(&key).cloned().unwrap_or_default()
+        let key = canonical_code_str(code);
+        self.inventory.get(key).cloned().unwrap_or_default()
     }
 
     fn entry_for_mut(&mut self, code: &str) -> &mut InventoryEntry {
@@ -489,14 +491,14 @@ impl FlossKeeperApp {
     }
 
     fn cleanup_entry_if_empty(&mut self, code: &str) {
-        let key = canonical_code(code);
+        let key = canonical_code_str(code);
         if self
             .inventory
-            .get(&key)
+            .get(key)
             .map(|entry| entry.is_empty())
             .unwrap_or(false)
         {
-            self.inventory.remove(&key);
+            self.inventory.remove(key);
         }
     }
 
@@ -512,76 +514,6 @@ impl FlossKeeperApp {
         entry.skeins = adjust_u32(entry.skeins, delta);
         self.cleanup_entry_if_empty(code);
         self.dirty = true;
-    }
-
-    fn owned_color_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| is_owned(&self.entry_for(&color.code)))
-            .count()
-    }
-
-    fn missing_color_count(&self) -> usize {
-        self.colors.len().saturating_sub(self.owned_color_count())
-    }
-
-    fn bobbins_only_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| {
-                let entry = self.entry_for(&color.code);
-                entry.bobbins > 0 && entry.skeins == 0
-            })
-            .count()
-    }
-
-    fn skeins_only_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| {
-                let entry = self.entry_for(&color.code);
-                entry.skeins > 0 && entry.bobbins == 0
-            })
-            .count()
-    }
-
-    fn both_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| {
-                let entry = self.entry_for(&color.code);
-                entry.bobbins > 0 && entry.skeins > 0
-            })
-            .count()
-    }
-
-    fn low_stock_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| {
-                let entry = self.entry_for(&color.code);
-                is_owned(&entry) && entry.total_units() <= 1
-            })
-            .count()
-    }
-
-    fn notes_count(&self) -> usize {
-        self.colors
-            .iter()
-            .filter(|color| !self.entry_for(&color.code).notes.trim().is_empty())
-            .count()
-    }
-
-    fn total_bobbins(&self) -> u32 {
-        self.inventory.values().map(|entry| entry.bobbins).sum()
-    }
-
-    fn total_skeins(&self) -> u32 {
-        self.inventory.values().map(|entry| entry.skeins).sum()
-    }
-
-    fn total_units(&self) -> u32 {
-        self.total_bobbins() + self.total_skeins()
     }
 
     fn save_collection(&mut self) -> io::Result<()> {
@@ -763,23 +695,61 @@ impl FlossKeeperApp {
 
         ui.separator();
 
+        let mut owned_count = 0;
+        let mut bobbins_only_count = 0;
+        let mut skeins_only_count = 0;
+        let mut both_count = 0;
+        let mut low_stock_count = 0;
+        let mut notes_count = 0;
+
+        for color in &self.colors {
+            let entry = self.entry_for(&color.code);
+            let owned = is_owned(&entry);
+
+            if owned {
+                owned_count += 1;
+
+                let units = entry.total_units();
+                if units <= 1 {
+                    low_stock_count += 1;
+                }
+
+                if entry.bobbins > 0 && entry.skeins == 0 {
+                    bobbins_only_count += 1;
+                } else if entry.skeins > 0 && entry.bobbins == 0 {
+                    skeins_only_count += 1;
+                } else if entry.bobbins > 0 && entry.skeins > 0 {
+                    both_count += 1;
+                }
+            }
+
+            if !entry.notes.trim().is_empty() {
+                notes_count += 1;
+            }
+        }
+
+        let missing_count = self.colors.len().saturating_sub(owned_count);
+        let total_bobbins: u32 = self.inventory.values().map(|entry| entry.bobbins).sum();
+        let total_skeins: u32 = self.inventory.values().map(|entry| entry.skeins).sum();
+        let total_units = total_bobbins + total_skeins;
+
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(format!("Owned: {}", self.owned_color_count())).strong());
-            ui.label(format!("Missing: {}", self.missing_color_count()));
-            ui.label(format!("Bobbins: {}", self.total_bobbins()));
-            ui.label(format!("Skeins: {}", self.total_skeins()));
-            ui.label(format!("Total units: {}", self.total_units()));
+            ui.label(RichText::new(format!("Owned: {}", owned_count)).strong());
+            ui.label(format!("Missing: {}", missing_count));
+            ui.label(format!("Bobbins: {}", total_bobbins));
+            ui.label(format!("Skeins: {}", total_skeins));
+            ui.label(format!("Total units: {}", total_units));
             if self.dirty {
                 ui.label(RichText::new("Unsaved changes").strong());
             }
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.label(format!("Bobbins only: {}", self.bobbins_only_count()));
-            ui.label(format!("Skeins only: {}", self.skeins_only_count()));
-            ui.label(format!("Both: {}", self.both_count()));
-            ui.label(format!("Low stock: {}", self.low_stock_count()));
-            ui.label(format!("With notes: {}", self.notes_count()));
+            ui.label(format!("Bobbins only: {}", bobbins_only_count));
+            ui.label(format!("Skeins only: {}", skeins_only_count));
+            ui.label(format!("Both: {}", both_count));
+            ui.label(format!("Low stock: {}", low_stock_count));
+            ui.label(format!("With notes: {}", notes_count));
         });
 
         ui.horizontal(|ui| {
@@ -858,17 +828,19 @@ impl FlossKeeperApp {
 
     fn ui_color_list(&mut self, ui: &mut egui::Ui) {
         let query = self.search.trim().to_lowercase();
-        let mut visible: Vec<DmcColor> = Vec::new();
+        let mut visible: Vec<&DmcColor> = Vec::new();
 
         for color in &self.colors {
             let entry = self.entry_for(&color.code);
             let owned = is_owned(&entry);
-            let notes = entry.notes.trim().to_lowercase();
 
-            let matches_query = query.is_empty()
-                || color.code.to_lowercase().contains(&query)
-                || color.name.to_lowercase().contains(&query)
-                || notes.contains(&query);
+            let matches_query = if query.is_empty() {
+                true
+            } else {
+                color.code_lower.contains(&query)
+                    || color.name_lower.contains(&query)
+                    || entry.notes.trim().to_lowercase().contains(&query)
+            };
 
             let matches_filter = match self.filter_mode {
                 FilterMode::All => true,
@@ -881,7 +853,7 @@ impl FlossKeeperApp {
             };
 
             if matches_query && matches_filter {
-                visible.push(color.clone());
+                visible.push(color);
             }
         }
 
@@ -1040,21 +1012,21 @@ impl FlossKeeperApp {
         ui.add_space(10.0);
 
         if ui.button("Export JSON Backup").clicked() {
-            self.backup_status = match backup::export_json_backup() {
+            self.backup_status = match backup::export_json_backup(&self.save_path) {
                 Ok(msg) => msg,
                 Err(err) => format!("Export failed:\n{err}"),
             };
         }
 
         if ui.button("Restore JSON Backup").clicked() {
-            self.backup_status = match backup::restore_json_backup() {
+            self.backup_status = match backup::restore_json_backup(&self.save_path) {
                 Ok(msg) => format!("{msg}\n\nRestart FlossKeeper to reload the restored stash."),
                 Err(err) => format!("Restore failed:\n{err}"),
             };
         }
 
         if ui.button("Export Plain TSV Copy").clicked() {
-            self.backup_status = match backup::export_plain_tsv_copy() {
+            self.backup_status = match backup::export_plain_tsv_copy(&self.save_path) {
                 Ok(msg) => msg,
                 Err(err) => format!("TSV export failed:\n{err}"),
             };
@@ -1265,7 +1237,7 @@ impl FlossKeeperApp {
 
 impl FlossKeeperApp {
     fn find_color_by_code(&self, raw_code: &str) -> Option<&DmcColor> {
-        let candidate = canonical_code(raw_code.trim());
+        let candidate = canonical_code_str(raw_code);
 
         if candidate.is_empty() {
             return None;
@@ -1280,9 +1252,9 @@ impl FlossKeeperApp {
         };
 
         for color in &self.colors {
-            let color_code = canonical_code(&color.code);
+            let color_code = color.code.as_str();
 
-            if color_code.eq_ignore_ascii_case(&candidate) {
+            if color_code.eq_ignore_ascii_case(candidate) {
                 return Some(color);
             }
 
@@ -1704,11 +1676,15 @@ fn load_dmc_colors() -> Vec<DmcColor> {
 }
 
 fn canonical_code(code: &str) -> String {
+    canonical_code_str(code).to_string()
+}
+
+fn canonical_code_str(code: &str) -> &str {
     let trimmed = code.trim();
     if trimmed.eq_ignore_ascii_case("White") {
-        "Blanc".to_string()
+        "Blanc"
     } else {
-        trimmed.to_string()
+        trimmed
     }
 }
 
@@ -1733,11 +1709,16 @@ fn parse_dmc_line(line: &str) -> Option<DmcColor> {
     let hex = line[last + 1..].trim().trim_matches('"').to_string();
     let rgb = parse_hex_rgb(&hex)?;
 
+    let code_lower = code.to_lowercase();
+    let name_lower = name.to_lowercase();
+
     Some(DmcColor {
         code,
         name,
         hex,
         rgb,
+        code_lower,
+        name_lower,
     })
 }
 
